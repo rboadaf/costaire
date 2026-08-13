@@ -1,7 +1,7 @@
 {
   "name": "Costair€ - Cost dels aires",
   "short_name": "Costair€",
-  "description": "Calculadora del cost horari dels aires condicionats amb mode manual i PVPC/ESIOS.",
+  "description": "Calculadora del cost horari dels aires condicionats amb mode manual, PVPC/ESIOS i càrrega de fitxer.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#260101",

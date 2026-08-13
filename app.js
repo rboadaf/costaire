@@ -30,26 +30,21 @@ function saveState(){
   localStorage.setItem('pvpcFetchedAt', state.pvpcFetchedAt);
 }
 
-function activeConsumption(){
-  return SPLITS.filter(s => state.selected.has(s.id)).reduce((sum, s) => sum + s.kwh, 0);
-}
-
+function activeConsumption(){ return SPLITS.filter(s => state.selected.has(s.id)).reduce((sum, s) => sum + s.kwh, 0); }
 function currentPrice(){
-  if(state.mode === 'auto' && state.pvpc.length){
+  if(state.mode !== 'manual' && state.pvpc.length){
     const h = nowHour();
     return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
   }
   return state.manualPrice;
 }
-
 function priceForOffset(offset){
-  if(state.mode === 'auto' && state.pvpc.length){
+  if(state.mode !== 'manual' && state.pvpc.length){
     const h = (nowHour() + offset) % 24;
     return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
   }
   return state.manualPrice;
 }
-
 function costForHours(hours){
   const kwh = activeConsumption();
   let total = 0;
@@ -65,27 +60,25 @@ function renderSplits(){
     card.type = 'button';
     card.className = `split-card ${state.selected.has(split.id) ? 'active' : ''}`;
     card.innerHTML = `<div class="toggle-dot" aria-hidden="true"></div><strong>${split.name}</strong><span>${split.type}</span><span>${split.kwh.toFixed(2).replace('.', ',')} kWh/h</span>`;
-    card.addEventListener('click', () => {
-      if(state.selected.has(split.id)) state.selected.delete(split.id); else state.selected.add(split.id);
-      saveState();
-      render();
-    });
+    card.addEventListener('click', () => { state.selected.has(split.id) ? state.selected.delete(split.id) : state.selected.add(split.id); saveState(); render(); });
     grid.appendChild(card);
   });
 }
 
-function renderPrices(){
+function renderPanels(){
   $('manualPrice').value = state.manualPrice;
   $('esiosToken').value = state.token;
   $('manualPanel').classList.toggle('hidden', state.mode !== 'manual');
   $('autoPanel').classList.toggle('hidden', state.mode !== 'auto');
+  $('filePanel').classList.toggle('hidden', state.mode !== 'file');
   $('manualModeBtn').classList.toggle('active', state.mode === 'manual');
   $('autoModeBtn').classList.toggle('active', state.mode === 'auto');
+  $('fileModeBtn').classList.toggle('active', state.mode === 'file');
   const badge = $('liveBadge');
-  badge.className = `badge ${state.mode === 'auto' && state.pvpc.length ? 'live' : state.mode === 'auto' ? 'error' : 'manual'}`;
-  badge.textContent = state.mode === 'auto' && state.pvpc.length ? 'PVPC' : state.mode === 'auto' ? 'Sense dades' : 'Manual';
+  badge.className = `badge ${state.mode !== 'manual' && state.pvpc.length ? 'live' : state.mode !== 'manual' ? 'error' : 'manual'}`;
+  badge.textContent = state.mode === 'manual' ? 'Manual' : state.pvpc.length ? (state.mode === 'file' ? 'Fitxer' : 'PVPC') : 'Sense dades';
   const fetched = state.pvpcFetchedAt ? ` · actualitzat ${new Date(state.pvpcFetchedAt).toLocaleString('ca-ES')}` : '';
-  $('priceStatus').textContent = `${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode === 'auto' ? fetched : ''}`;
+  $('priceStatus').textContent = `${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode !== 'manual' ? fetched : ''}`;
 }
 
 function renderResults(){
@@ -94,9 +87,10 @@ function renderResults(){
   $('costNow').textContent = fmtCurrency(kwh * currentPrice());
   $('costNext').textContent = fmtCurrency(costForHours(state.hours));
   $('costEight').textContent = fmtCurrency(costForHours(8));
+  $('costNextLabel').textContent = `Cost properes ${state.hours} h`;
   $('hoursLabel').textContent = `${state.hours} h`;
+  $('hoursHelp').textContent = `Fes lliscar la barra per veure el cost acumulat durant ${state.hours} hores.`;
   $('hoursRange').value = state.hours;
-  document.querySelectorAll('.preset-row button').forEach(b => b.classList.toggle('active', Number(b.dataset.hours) === state.hours));
   const activeNames = SPLITS.filter(s => state.selected.has(s.id)).map(s => s.name);
   $('summaryBox').textContent = [
     `Aires actius: ${activeNames.length ? activeNames.join(' + ') : 'cap'}`,
@@ -110,92 +104,94 @@ function renderResults(){
 
 function renderHourlyTable(){
   const body = $('hourlyTable');
-  if(!state.pvpc.length){
-    body.innerHTML = '<tr><td colspan="3">Sense dades PVPC carregades.</td></tr>';
-    return;
-  }
+  $('noPvpcBox').classList.toggle('hidden', !!state.pvpc.length);
+  if(!state.pvpc.length){ body.innerHTML = '<tr><td colspan="3">Sense dades PVPC carregades.</td></tr>'; return; }
   const kwh = activeConsumption();
   body.innerHTML = state.pvpc.map(row => `<tr><td>${String(row.hour).padStart(2, '0')}:00</td><td>${row.price.toFixed(5).replace('.', ',')} €/kWh</td><td>${fmtCurrency(kwh * row.price)}</td></tr>`).join('');
 }
+function render(){ renderSplits(); renderPanels(); renderResults(); renderHourlyTable(); }
 
-function render(){
-  renderSplits();
-  renderPrices();
-  renderResults();
-  renderHourlyTable();
+function normalisePrice(value){
+  let n = Number(String(value).trim().replace(',', '.'));
+  if(!Number.isFinite(n)) return null;
+  if(n > 1 && n < 1000) n = n / 1000;
+  if(n >= 0 && n < 2) return n;
+  return null;
+}
+function parsePvpcText(text){
+  try{
+    const json = JSON.parse(text);
+    const values = json?.indicator?.values || json?.values || json;
+    if(Array.isArray(values)){
+      const rows = values.map(v => ({ hour: new Date(v.datetime || v.date || v.time || v.hour).getHours(), price: normalisePrice(v.value ?? v.price ?? v.preu) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
+      if(rows.length) return uniqueHours(rows);
+    }
+  }catch{}
+  const rows = [];
+  text.replace(/\r/g, '').split('\n').forEach(line => {
+    const time = line.match(/\b([01]?\d|2[0-3])(?::|\.)([0-5]\d)\b|\b([01]?\d|2[0-3])\s*h\b/i);
+    if(!time) return;
+    const hour = Number(time[1] ?? time[3]);
+    const nums = line.match(/-?\d+(?:[\.,]\d+)?/g) || [];
+    const candidates = nums.map(normalisePrice).filter(v => v !== null);
+    const price = candidates.reverse().find(v => v >= 0 && v < 2);
+    if(Number.isFinite(hour) && price !== undefined) rows.push({ hour, price });
+  });
+  return uniqueHours(rows);
+}
+function uniqueHours(rows){
+  const unique = [];
+  const seen = new Set();
+  rows.sort((a,b)=>a.hour-b.hour).forEach(v => { if(!seen.has(v.hour)){ seen.add(v.hour); unique.push(v); } });
+  return unique;
+}
+
+async function handleFile(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+  const text = await file.text();
+  const parsed = parsePvpcText(text);
+  if(parsed.length < 1){ alert('No he pogut detectar preus horaris. Prova de desar el fitxer Excel com a CSV des de Calc i torna-ho a carregar.'); return; }
+  state.pvpc = parsed;
+  state.pvpcFetchedAt = new Date().toISOString();
+  state.mode = 'file';
+  saveState();
+  render();
+  if(parsed.length < 24) alert(`He carregat ${parsed.length} hores. Pot faltar alguna hora al fitxer.`);
 }
 
 async function fetchPVPC(){
   state.token = $('esiosToken').value.trim();
   if(!state.token){ alert('Cal enganxar un token personal ESIOS per provar el mode automàtic.'); return; }
-  const date = new Date();
-  if($('useTomorrow').checked) date.setDate(date.getDate() + 1);
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth()+1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const start = `${yyyy}-${mm}-${dd}T00:00:00`;
-  const end = `${yyyy}-${mm}-${dd}T23:59:59`;
+  const date = new Date(); if($('useTomorrow').checked) date.setDate(date.getDate() + 1);
+  const yyyy = date.getFullYear(), mm = String(date.getMonth()+1).padStart(2, '0'), dd = String(date.getDate()).padStart(2, '0');
+  const start = `${yyyy}-${mm}-${dd}T00:00:00`, end = `${yyyy}-${mm}-${dd}T23:59:59`;
   const endpoint = `https://api.esios.ree.es/indicators/1001?start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}&geo_ids[]=8741`;
   try{
-    $('fetchPvpcBtn').disabled = true;
-    $('fetchPvpcBtn').textContent = 'Actualitzant...';
-    const res = await fetch(endpoint, {
-      headers: {
-        'Accept': 'application/json; application/vnd.esios-api-v1+json',
-        'Content-Type': 'application/json',
-        'Authorization': `Token token="${state.token}"`
-      }
-    });
+    $('fetchPvpcBtn').disabled = true; $('fetchPvpcBtn').textContent = 'Actualitzant...';
+    const res = await fetch(endpoint, { headers: { 'Accept':'application/json; application/vnd.esios-api-v1+json', 'Content-Type':'application/json', 'Authorization':`Token token="${state.token}"` } });
     if(!res.ok) throw new Error(`Resposta HTTP ${res.status}`);
     const data = await res.json();
-    const values = data?.indicator?.values || [];
-    const parsed = values.map(v => ({ hour: new Date(v.datetime).getHours(), price: Number(v.value) })).filter(v => Number.isFinite(v.hour) && Number.isFinite(v.price));
+    const parsed = (data?.indicator?.values || []).map(v => ({ hour: new Date(v.datetime).getHours(), price: normalisePrice(v.value) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
     if(!parsed.length) throw new Error('No hi ha valors horaris al JSON rebut.');
-    const unique = [];
-    const seen = new Set();
-    parsed.sort((a,b) => a.hour - b.hour).forEach(v => { if(!seen.has(v.hour)){ seen.add(v.hour); unique.push(v); } });
-    state.pvpc = unique;
-    state.pvpcFetchedAt = new Date().toISOString();
-    state.mode = 'auto';
-    saveState();
-    render();
-  }catch(err){
-    console.error(err);
-    alert('No he pogut descarregar el PVPC. Pot ser token incorrecte, CORS del navegador o canvis a ESIOS. L\'app continua funcionant amb preu manual.');
-  }finally{
-    $('fetchPvpcBtn').disabled = false;
-    $('fetchPvpcBtn').textContent = 'Actualitza';
-  }
+    state.pvpc = uniqueHours(parsed); state.pvpcFetchedAt = new Date().toISOString(); state.mode = 'auto'; saveState(); render();
+  }catch(err){ console.error(err); alert('No he pogut descarregar el PVPC. Pot ser token incorrecte, CORS del navegador o canvis a ESIOS. Pots carregar un CSV a la pestanya Fitxer.'); }
+  finally{ $('fetchPvpcBtn').disabled = false; $('fetchPvpcBtn').textContent = 'Actualitza'; }
 }
 
 function wireEvents(){
   $('manualModeBtn').addEventListener('click', () => { state.mode = 'manual'; saveState(); render(); });
   $('autoModeBtn').addEventListener('click', () => { state.mode = 'auto'; saveState(); render(); });
-  $('saveManualPrice').addEventListener('click', () => {
-    const v = Number(String($('manualPrice').value).replace(',', '.'));
-    if(!Number.isFinite(v) || v < 0){ alert('Preu no vàlid.'); return; }
-    state.manualPrice = v;
-    saveState();
-    render();
-  });
+  $('fileModeBtn').addEventListener('click', () => { state.mode = 'file'; saveState(); render(); });
+  $('saveManualPrice').addEventListener('click', () => { const v = Number(String($('manualPrice').value).replace(',', '.')); if(!Number.isFinite(v) || v < 0){ alert('Preu no vàlid.'); return; } state.manualPrice = v; saveState(); render(); });
   $('fetchPvpcBtn').addEventListener('click', fetchPVPC);
+  $('pvpcFile').addEventListener('change', handleFile);
+  $('clearPvpcBtn').addEventListener('click', () => { state.pvpc = []; state.pvpcFetchedAt = ''; saveState(); render(); });
   $('hoursRange').addEventListener('input', (e) => { state.hours = Number(e.target.value); saveState(); renderResults(); renderHourlyTable(); });
-  document.querySelectorAll('.preset-row button').forEach(btn => btn.addEventListener('click', () => { state.hours = Number(btn.dataset.hours); saveState(); render(); }));
-  $('copySummaryBtn').addEventListener('click', async () => {
-    try{
-      await navigator.clipboard.writeText($('summaryBox').textContent);
-      $('copySummaryBtn').textContent = 'Copiat!';
-      setTimeout(() => $('copySummaryBtn').textContent = 'Copia resum', 1200);
-    }catch{ alert('No he pogut copiar el resum.'); }
-  });
+  $('copySummaryBtn').addEventListener('click', async () => { try{ await navigator.clipboard.writeText($('summaryBox').textContent); $('copySummaryBtn').textContent = 'Copiat!'; setTimeout(()=> $('copySummaryBtn').textContent = 'Copia resum', 1200); }catch{ alert('No he pogut copiar el resum.'); } });
 }
-
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; $('installBtn').classList.remove('hidden'); });
 $('installBtn')?.addEventListener('click', async () => { if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt = null; $('installBtn').classList.add('hidden'); } });
-
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
-}
-wireEvents();
-render();
+if('serviceWorker' in navigator){ window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn)); }
+wireEvents(); render();

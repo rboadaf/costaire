@@ -1,15 +1,11 @@
 # Costair€ - PWA de cost dels aires
 
-Versió amb marca **Costair€** i icones amb senyera al vent de fons.
+Versió v3 amb els resultats principals a dalt, cost d'aquesta hora destacat en negre sobre groc, etiqueta dinàmica de properes hores i càrrega de fitxer CSV/JSON PVPC.
 
-## Fitxers
+## Com carregar PVPC sense token
 
-- index.html
-- styles.css
-- app.js
-- manifest.json
-- sw.js
-- icons/icon-192.png
-- icons/icon-512.png
-
-Puja el contingut d'aquesta carpeta a l'arrel del repositori GitHub Pages `costaire`.
+1. Ves a https://www.esios.ree.es/es/pvpc
+2. Descarrega el fitxer Excel del PVPC.
+3. Obre'l amb LibreOffice Calc.
+4. Desa'l com a CSV.
+5. Carrega el CSV a la pestanya Fitxer de la PWA.
