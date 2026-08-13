@@ -5,6 +5,15 @@ const SPLITS = [
   { id: 'menjador', name: 'Menjador', type: 'Split 12', kwh: 0.59 }
 ];
 
+const $ = id => document.getElementById(id);
+const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+const setValue = (id, value) => { const el = $(id); if (el) el.value = value; };
+const toggle = (id, cls, force) => { const el = $(id); if (el) el.classList.toggle(cls, force); };
+const fmtEUR = n => new Intl.NumberFormat('ca-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(Number.isFinite(n) ? n : 0);
+const fmtKwh = n => `${(Number.isFinite(n) ? n : 0).toFixed(2).replace('.', ',')} kWh/h`;
+const hourNow = () => new Date().getHours();
+
 const state = {
   selected: new Set(JSON.parse(localStorage.getItem('selectedSplits') || '[]')),
   hours: Number(localStorage.getItem('hours') || 8),
@@ -12,15 +21,9 @@ const state = {
   manualPrice: Number(localStorage.getItem('manualPrice') || 0.096),
   token: localStorage.getItem('esiosToken') || '',
   pvpc: JSON.parse(localStorage.getItem('pvpcData') || '[]'),
-  pvpcFetchedAt: localStorage.getItem('pvpcFetchedAt') || '',
   webPrice: Number(localStorage.getItem('webPrice') || NaN),
-  protectedMode: localStorage.getItem('protectedMode') || 'peninsula'
+  pvpcFetchedAt: localStorage.getItem('pvpcFetchedAt') || ''
 };
-
-const $ = (id) => document.getElementById(id);
-const fmtCurrency = (n) => new Intl.NumberFormat('ca-ES', { style:'currency', currency:'EUR', minimumFractionDigits:2, maximumFractionDigits:3 }).format(Number.isFinite(n) ? n : 0);
-const fmtKwh = (n) => `${(Number.isFinite(n) ? n : 0).toFixed(2).replace('.', ',')} kWh/h`;
-const nowHour = () => new Date().getHours();
 
 function saveState(){
   localStorage.setItem('selectedSplits', JSON.stringify([...state.selected]));
@@ -30,204 +33,186 @@ function saveState(){
   localStorage.setItem('esiosToken', state.token);
   localStorage.setItem('pvpcData', JSON.stringify(state.pvpc));
   localStorage.setItem('pvpcFetchedAt', state.pvpcFetchedAt);
-  if(Number.isFinite(state.webPrice)) localStorage.setItem('webPrice', String(state.webPrice));
-  localStorage.setItem('protectedMode', state.protectedMode);
+  if (Number.isFinite(state.webPrice)) localStorage.setItem('webPrice', String(state.webPrice));
 }
 
-function activeConsumption(){ return SPLITS.filter(s => state.selected.has(s.id)).reduce((sum, s) => sum + s.kwh, 0); }
+function activeConsumption(){
+  return SPLITS.filter(s => state.selected.has(s.id)).reduce((sum, s) => sum + s.kwh, 0);
+}
+
 function currentPrice(){
-  if(state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
-  if(state.mode !== 'manual' && state.pvpc.length){
-    const h = nowHour();
-    return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
+  if (state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
+  if (state.mode !== 'manual' && state.pvpc.length) {
+    return state.pvpc.find(p => p.hour === hourNow())?.price ?? state.manualPrice;
   }
   return state.manualPrice;
 }
+
 function priceForOffset(offset){
-  if(state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
-  if(state.mode !== 'manual' && state.pvpc.length){
-    const h = (nowHour() + offset) % 24;
+  if (state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
+  if (state.mode !== 'manual' && state.pvpc.length) {
+    const h = (hourNow() + offset) % 24;
     return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
   }
   return state.manualPrice;
 }
+
 function costForHours(hours){
   const kwh = activeConsumption();
   let total = 0;
-  for(let i = 0; i < hours; i++) total += kwh * priceForOffset(i);
+  for (let i = 0; i < hours; i++) total += kwh * priceForOffset(i);
   return total;
 }
 
 function renderSplits(){
   const grid = $('splitGrid');
+  if (!grid) return;
   grid.innerHTML = '';
   SPLITS.forEach(split => {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = `split-card ${state.selected.has(split.id) ? 'active' : ''}`;
     card.innerHTML = `<div class="toggle-dot" aria-hidden="true"></div><strong>${split.name}</strong><span>${split.type}</span><span>${split.kwh.toFixed(2).replace('.', ',')} kWh/h</span>`;
-    card.addEventListener('click', () => { state.selected.has(split.id) ? state.selected.delete(split.id) : state.selected.add(split.id); saveState(); render(); });
+    card.addEventListener('click', () => {
+      state.selected.has(split.id) ? state.selected.delete(split.id) : state.selected.add(split.id);
+      saveState();
+      render();
+    });
     grid.appendChild(card);
   });
 }
 
 function renderPanels(){
-  $('manualPrice').value = state.manualPrice;
-  $('esiosToken').value = state.token;
-  $('manualPanel').classList.toggle('hidden', state.mode !== 'manual');
-  $('webPanel').classList.toggle('hidden', state.mode !== 'web');
-  $('autoPanel').classList.toggle('hidden', state.mode !== 'auto');
-  $('filePanel').classList.toggle('hidden', state.mode !== 'file');
-  $('manualModeBtn').classList.toggle('active', state.mode === 'manual');
-  $('webModeBtn').classList.toggle('active', state.mode === 'web');
-  $('autoModeBtn').classList.toggle('active', state.mode === 'auto');
-  $('fileModeBtn').classList.toggle('active', state.mode === 'file');
+  setValue('manualPrice', state.manualPrice);
+  setValue('esiosToken', state.token);
+  toggle('manualPanel', 'hidden', state.mode !== 'manual');
+  toggle('webPanel', 'hidden', state.mode !== 'web');
+  toggle('autoPanel', 'hidden', state.mode !== 'auto');
+  toggle('filePanel', 'hidden', state.mode !== 'file');
+  toggle('manualModeBtn', 'active', state.mode === 'manual');
+  toggle('webModeBtn', 'active', state.mode === 'web');
+  toggle('autoModeBtn', 'active', state.mode === 'auto');
+  toggle('fileModeBtn', 'active', state.mode === 'file');
   const badge = $('liveBadge');
-  badge.className = `badge ${state.mode === 'web' && Number.isFinite(state.webPrice) ? 'live' : state.mode !== 'manual' && state.pvpc.length ? 'live' : state.mode !== 'manual' ? 'error' : 'manual'}`;
-  badge.textContent = state.mode === 'manual' ? 'Manual' : state.mode === 'web' && Number.isFinite(state.webPrice) ? 'Web' : state.pvpc.length ? (state.mode === 'file' ? 'Fitxer' : 'API') : 'Sense dades';
+  if (badge) {
+    const hasData = (state.mode === 'web' && Number.isFinite(state.webPrice)) || (state.mode !== 'manual' && state.pvpc.length);
+    badge.className = `badge ${state.mode === 'manual' ? 'manual' : hasData ? 'live' : 'error'}`;
+    badge.textContent = state.mode === 'manual' ? 'Manual' : state.mode === 'web' ? 'Web' : state.mode === 'file' ? 'Fitxer' : 'API';
+  }
   const fetched = state.pvpcFetchedAt ? ` · actualitzat ${new Date(state.pvpcFetchedAt).toLocaleString('ca-ES')}` : '';
-  $('priceStatus').textContent = `${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode !== 'manual' ? fetched : ''}`;
+  setText('priceStatus', `${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode !== 'manual' ? fetched : ''}`);
 }
 
 function renderResults(){
   const kwh = activeConsumption();
-  $('activeKwh').textContent = fmtKwh(kwh);
-  $('costNow').textContent = fmtCurrency(kwh * currentPrice());
-  $('costNext').textContent = fmtCurrency(costForHours(state.hours));
-  $('costNextLabel').textContent = `Cost properes ${state.hours} h`;
-  $('hoursLabel').textContent = `${state.hours} h`;
-  $('hoursHelp').textContent = `Fes lliscar la barra per veure el cost acumulat durant ${state.hours} hores.`;
-  $('hoursRange').value = state.hours;
+  setText('activeKwh', fmtKwh(kwh));
+  setText('costNow', fmtEUR(kwh * currentPrice()));
+  setText('costNext', fmtEUR(costForHours(state.hours)));
+  setText('costNextLabel', `Cost properes ${state.hours} h`);
+  setText('hoursLabel', `${state.hours} h`);
+  setText('hoursHelp', `Fes lliscar la barra per veure el cost acumulat durant ${state.hours} hores.`);
+  setValue('hoursRange', state.hours);
   const activeNames = SPLITS.filter(s => state.selected.has(s.id)).map(s => s.name);
-  $('summaryBox').textContent = [
+  const summary = [
     `Aires actius: ${activeNames.length ? activeNames.join(' + ') : 'cap'}`,
     `Consum: ${fmtKwh(kwh)}`,
     `Preu aquesta hora: ${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode === 'web' ? ' (web ESIOS actual)' : ''}`,
-    `Cost aquesta hora: ${fmtCurrency(kwh * currentPrice())}`,
-    `Cost properes ${state.hours} h: ${fmtCurrency(costForHours(state.hours))}`
+    `Cost aquesta hora: ${fmtEUR(kwh * currentPrice())}`,
+    `Cost properes ${state.hours} h: ${fmtEUR(costForHours(state.hours))}`
   ].join('\n');
+  setText('summaryBox', summary);
 }
 
 function renderHourlyTable(){
   const body = $('hourlyTable');
-  $('noPvpcBox').classList.toggle('hidden', !!state.pvpc.length);
-  if(!state.pvpc.length){ body.innerHTML = '<tr><td colspan="3">Sense dades PVPC carregades.</td></tr>'; return; }
+  if (!body) return;
+  toggle('noPvpcBox', 'hidden', !!state.pvpc.length);
+  if (!state.pvpc.length) {
+    body.innerHTML = '<tr><td colspan="3">Sense dades PVPC carregades.</td></tr>';
+    return;
+  }
   const kwh = activeConsumption();
-  body.innerHTML = state.pvpc.map(row => `<tr><td>${String(row.hour).padStart(2, '0')}:00</td><td>${row.price.toFixed(5).replace('.', ',')} €/kWh</td><td>${fmtCurrency(kwh * row.price)}</td></tr>`).join('');
+  body.innerHTML = state.pvpc.map(row => `<tr><td>${String(row.hour).padStart(2, '0')}:00</td><td>${row.price.toFixed(5).replace('.', ',')} €/kWh</td><td>${fmtEUR(kwh * row.price)}</td></tr>`).join('');
 }
-function render(){ renderSplits(); renderPanels(); renderResults(); renderHourlyTable(); }
+
+function render(){
+  renderSplits();
+  renderPanels();
+  renderResults();
+  renderHourlyTable();
+}
+
+function uniqueHours(rows){
+  const seen = new Set();
+  return rows.sort((a,b) => a.hour - b.hour).filter(r => {
+    if (seen.has(r.hour)) return false;
+    seen.add(r.hour);
+    return true;
+  });
+}
 
 function normalisePrice(value){
   let n = Number(String(value).trim().replace(',', '.'));
-  if(!Number.isFinite(n)) return null;
-  // ESIOS Desglose uses €/MWh in the FEU column. Convert to €/kWh.
-  if(n > 1 && n < 1000) n = n / 1000;
-  if(n >= 0 && n < 2) return n;
-  return null;
+  if (!Number.isFinite(n)) return null;
+  if (n > 1 && n < 1000) n = n / 1000;
+  return n >= 0 && n < 2 ? n : null;
 }
-function uniqueHours(rows){
-  const unique = [];
-  const seen = new Set();
-  rows.sort((a,b)=>a.hour-b.hour).forEach(v => { if(!seen.has(v.hour)){ seen.add(v.hour); unique.push(v); } });
-  return unique;
-}
+
 function parseEsiosWorkbook(buffer){
-  if(typeof XLSX === 'undefined') return [];
-  try{
+  if (typeof XLSX === 'undefined') return [];
+  try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
     const sheet = workbook.Sheets['Tabla de Datos PCB'];
-    if(!sheet) return [];
+    if (!sheet) return [];
     const rows = [];
-    for(let row = 6; row <= 29; row++){
+    for (let row = 6; row <= 29; row++) {
       const cell = sheet[`E${row}`];
-      const raw = cell ? cell.v : null;
-      const value = Number(String(raw).replace(',', '.'));
-      if(Number.isFinite(value)){
-        rows.push({ hour: row - 6, price: value / 1000 });
-      }
+      const value = cell ? Number(String(cell.v).replace(',', '.')) : NaN;
+      if (Number.isFinite(value)) rows.push({ hour: row - 6, price: value / 1000 });
     }
-    return rows.length ? uniqueHours(rows) : [];
-  }catch(err){
-    console.warn('No he pogut llegir el workbook ESIOS amb SheetJS', err);
+    return rows.length === 24 ? rows : uniqueHours(rows);
+  } catch (err) {
+    console.warn('Error llegint XLS ESIOS', err);
     return [];
   }
 }
 
-function decodeFileBuffer(buffer){
-  const decoders = ['utf-8', 'windows-1252', 'iso-8859-1'];
-  for(const enc of decoders){
-    try{
-      const text = new TextDecoder(enc).decode(buffer);
-      if(text.includes('Detalle cálculo') || text.includes('PVPC') || text.includes('Término energía')) return text;
-    }catch{}
+function decodeText(buffer){
+  for (const enc of ['utf-8', 'windows-1252', 'iso-8859-1']) {
+    try { return new TextDecoder(enc).decode(buffer); } catch {}
   }
-  return new TextDecoder().decode(buffer);
+  return '';
 }
-function parseEsiosDetalleText(text){
-  const clean = text.replace(/\r/g, '').replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ');
-  const marker = /Detalle\s+c[áa]lculo\s+t[ée]rmino\s+energ[íi]a\s+PVPC\s+para\s+Pen[íi]nsula,\s*Canarias\s+y\s+Baleares/i;
-  const startMatch = clean.match(marker);
-  if(!startMatch) return [];
-  const start = startMatch.index + startMatch[0].length;
-  const nextBlock = clean.slice(start).search(/Detalle\s+c[áa]lculo\s+t[ée]rmino\s+energ[íi]a\s+PVPC\s+para\s+Ceuta/i);
-  const block = nextBlock >= 0 ? clean.slice(start, start + nextBlock) : clean.slice(start);
-  const lines = block.split('\n').map(x => x.trim()).filter(Boolean);
-  const rows = [];
-  for(let i = 0; i < lines.length - 4; i++){
-    const excelDay = Number(lines[i]);
-    const esiosHour = Number(lines[i + 1]);
-    const tariff = lines[i + 2];
-    const period = Number(lines[i + 3]);
-    const feu = Number(String(lines[i + 4]).replace(',', '.'));
-    if(excelDay > 30000 && esiosHour >= 1 && esiosHour <= 24 && /2\.0TD/i.test(tariff) && [1,2,3].includes(period) && Number.isFinite(feu)){
-      rows.push({ hour: esiosHour - 1, price: feu / 1000 });
-      i += 4;
-    }
-  }
-  return uniqueHours(rows);
-}
-function parsePvpcText(text){
-  const detalleRows = parseEsiosDetalleText(text);
-  if(detalleRows.length) return detalleRows;
-  try{
-    const json = JSON.parse(text);
-    const values = json?.indicator?.values || json?.values || json;
-    if(Array.isArray(values)){
-      const rows = values.map(v => ({ hour: new Date(v.datetime || v.date || v.time || v.hour).getHours(), price: normalisePrice(v.value ?? v.price ?? v.preu) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
-      if(rows.length) return uniqueHours(rows);
-    }
-  }catch{}
+
+function parseTextPrices(text){
   const rows = [];
   text.replace(/\r/g, '').split('\n').forEach(line => {
     const time = line.match(/\b([01]?\d|2[0-3])(?::|\.)([0-5]\d)\b|\b([01]?\d|2[0-3])\s*h\b/i);
-    if(!time) return;
+    if (!time) return;
     const hour = Number(time[1] ?? time[3]);
     const nums = line.match(/-?\d+(?:[\.,]\d+)?/g) || [];
-    const candidates = nums.map(normalisePrice).filter(v => v !== null);
-    const price = candidates.reverse().find(v => v >= 0 && v < 2);
-    if(Number.isFinite(hour) && price !== undefined) rows.push({ hour, price });
+    const price = nums.map(normalisePrice).filter(v => v !== null).pop();
+    if (Number.isFinite(hour) && price !== undefined) rows.push({ hour, price });
   });
   return uniqueHours(rows);
 }
+
 async function handleFile(event){
   const file = event.target.files?.[0];
-  if(!file) return;
+  if (!file) return;
   const buffer = await file.arrayBuffer();
   const name = (file.name || '').toLowerCase();
   let parsed = [];
-  if(name.endsWith('.xls') || name.endsWith('.xlsx')){
+  if (name.endsWith('.xls') || name.endsWith('.xlsx')) {
     parsed = parseEsiosWorkbook(buffer);
-    if(!parsed.length && typeof XLSX === 'undefined'){
-      alert('Falta carregar la llibreria XLSX. Recarrega la pàgina amb connexió a internet i torna-ho a provar.');
+    if (!parsed.length && typeof XLSX === 'undefined') {
+      alert('No s’ha carregat la llibreria per llegir XLS. Recarrega la pàgina amb connexió i torna-ho a provar.');
       return;
     }
   }
-  if(!parsed.length){
-    const text = decodeFileBuffer(buffer);
-    parsed = parsePvpcText(text);
-  }
-  if(parsed.length < 1){
-    alert('No he pogut detectar preus horaris. Assegura’t que és el fitxer ESIOS “PVPC Término de facturación energía activa – Desglose”.');
+  if (!parsed.length) parsed = parseTextPrices(decodeText(buffer));
+  if (!parsed.length) {
+    alert('No he pogut detectar preus horaris. El fitxer correcte és el PVPC “Desglose” d’ESIOS.');
     return;
   }
   state.pvpc = parsed;
@@ -237,43 +222,105 @@ async function handleFile(event){
   state.mode = 'file';
   saveState();
   render();
-  if(parsed.length < 24) alert(`He carregat ${parsed.length} hores. Pot faltar alguna hora al fitxer.`);
+}
+
+function parseEsiosScreenPrice(text){
+  const compact = text.replace(/\r/g, '').replace(/<[^>]+>/g, '\n');
+  const match = compact.match(/Península,\s*Baleares\s*y\s*Canarias[\s\S]{0,260}?([0-9]+(?:[\.,][0-9]+)?)\s*€\/kWh/i);
+  if (!match) return null;
+  const price = Number(match[1].replace(',', '.'));
+  return Number.isFinite(price) ? price : null;
+}
+
+async function fetchEsiosScreenPrice(){
+  const urls = ['https://www.esios.ree.es/es/pvpc', 'https://r.jina.ai/https://www.esios.ree.es/es/pvpc'];
+  let lastError = null;
+  const btn = $('fetchWebPriceBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Consultant...'; }
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const price = parseEsiosScreenPrice(await res.text());
+      if (price === null) throw new Error('preu no trobat');
+      state.webPrice = price;
+      state.pvpc = [{ hour: hourNow(), price }];
+      state.pvpcFetchedAt = new Date().toISOString();
+      state.mode = 'web';
+      saveState();
+      render();
+      if (btn) { btn.disabled = false; btn.textContent = 'Consulta preu web ESIOS'; }
+      return;
+    } catch (err) { lastError = err; }
+  }
+  console.error(lastError);
+  if (btn) { btn.disabled = false; btn.textContent = 'Consulta preu web ESIOS'; }
+  alert('No he pogut llegir el preu visible d’ESIOS. Pots usar Manual o Fitxer.');
 }
 
 async function fetchPVPC(){
-  state.token = $('esiosToken').value.trim();
-  if(!state.token){ alert('Cal enganxar un token personal ESIOS per provar el mode automàtic.'); return; }
-  const date = new Date(); if($('useTomorrow').checked) date.setDate(date.getDate() + 1);
-  const yyyy = date.getFullYear(), mm = String(date.getMonth()+1).padStart(2, '0'), dd = String(date.getDate()).padStart(2, '0');
-  const start = `${yyyy}-${mm}-${dd}T00:00:00`, end = `${yyyy}-${mm}-${dd}T23:59:59`;
-  const endpoint = `https://api.esios.ree.es/indicators/1001?start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}&geo_ids[]=8741`;
-  try{
-    $('fetchPvpcBtn').disabled = true; $('fetchPvpcBtn').textContent = 'Actualitzant...';
+  state.token = ($('esiosToken')?.value || '').trim();
+  if (!state.token) { alert('Cal un token personal ESIOS.'); return; }
+  const d = new Date();
+  if ($('useTomorrow')?.checked) d.setDate(d.getDate() + 1);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  const endpoint = `https://api.esios.ree.es/indicators/1001?start_date=${encodeURIComponent(`${y}-${m}-${day}T00:00:00`)}&end_date=${encodeURIComponent(`${y}-${m}-${day}T23:59:59`)}&geo_ids[]=8741`;
+  const btn = $('fetchPvpcBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Actualitzant...'; }
+  try {
     const res = await fetch(endpoint, { headers: { 'Accept':'application/json; application/vnd.esios-api-v1+json', 'Content-Type':'application/json', 'Authorization':`Token token="${state.token}"` } });
-    if(!res.ok) throw new Error(`Resposta HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const parsed = (data?.indicator?.values || []).map(v => ({ hour: new Date(v.datetime).getHours(), price: normalisePrice(v.value) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
-    if(!parsed.length) throw new Error('No hi ha valors horaris al JSON rebut.');
-    state.pvpc = uniqueHours(parsed); state.pvpcFetchedAt = new Date().toISOString(); state.mode = 'auto'; saveState(); render();
-  }catch(err){ console.error(err); alert('No he pogut descarregar el PVPC. Pot ser token incorrecte, CORS del navegador o canvis a ESIOS. Pots carregar el fitxer .xls a la pestanya Fitxer.'); }
-  finally{ $('fetchPvpcBtn').disabled = false; $('fetchPvpcBtn').textContent = 'Actualitza'; }
+    const rows = (data?.indicator?.values || []).map(v => ({ hour: new Date(v.datetime).getHours(), price: normalisePrice(v.value) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
+    if (!rows.length) throw new Error('sense dades');
+    state.pvpc = uniqueHours(rows);
+    state.webPrice = NaN;
+    localStorage.removeItem('webPrice');
+    state.pvpcFetchedAt = new Date().toISOString();
+    state.mode = 'auto';
+    saveState();
+    render();
+  } catch (err) {
+    console.error(err);
+    alert('No he pogut descarregar el PVPC per API. Pots usar Manual, Web ESIOS o Fitxer.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualitza'; }
+  }
 }
 
 function wireEvents(){
-  $('manualModeBtn').addEventListener('click', () => { state.mode = 'manual'; saveState(); render(); });
-  $('webModeBtn').addEventListener('click', () => { state.mode = 'web'; saveState(); render(); });
-  $('fetchWebPriceBtn').addEventListener('click', fetchEsiosScreenPrice);
-  $('autoModeBtn').addEventListener('click', () => { state.mode = 'auto'; saveState(); render(); });
-  $('fileModeBtn').addEventListener('click', () => { state.mode = 'file'; saveState(); render(); });
-  $('saveManualPrice').addEventListener('click', () => { const v = Number(String($('manualPrice').value).replace(',', '.')); if(!Number.isFinite(v) || v < 0){ alert('Preu no vàlid.'); return; } state.manualPrice = v; saveState(); render(); });
-  $('fetchPvpcBtn').addEventListener('click', fetchPVPC);
-  $('pvpcFile').addEventListener('change', handleFile);
-  $('clearPvpcBtn').addEventListener('click', () => { state.pvpc = []; state.webPrice = NaN; localStorage.removeItem('webPrice'); state.pvpcFetchedAt = ''; saveState(); render(); });
-  $('hoursRange').addEventListener('input', (e) => { state.hours = Number(e.target.value); saveState(); renderResults(); renderHourlyTable(); });
-  $('copySummaryBtn').addEventListener('click', async () => { try{ await navigator.clipboard.writeText($('summaryBox').textContent); $('copySummaryBtn').textContent = 'Copiat!'; setTimeout(()=> $('copySummaryBtn').textContent = 'Copia resum', 1200); }catch{ alert('No he pogut copiar el resum.'); } });
+  on('manualModeBtn', 'click', () => { state.mode = 'manual'; saveState(); render(); });
+  on('webModeBtn', 'click', () => { state.mode = 'web'; saveState(); render(); });
+  on('autoModeBtn', 'click', () => { state.mode = 'auto'; saveState(); render(); });
+  on('fileModeBtn', 'click', () => { state.mode = 'file'; saveState(); render(); });
+  on('fetchWebPriceBtn', 'click', fetchEsiosScreenPrice);
+  on('fetchPvpcBtn', 'click', fetchPVPC);
+  on('pvpcFile', 'change', handleFile);
+  on('clearPvpcBtn', 'click', () => { state.pvpc = []; state.webPrice = NaN; localStorage.removeItem('webPrice'); state.pvpcFetchedAt = ''; saveState(); render(); });
+  on('saveManualPrice', 'click', () => {
+    const v = Number(String($('manualPrice')?.value ?? state.manualPrice).replace(',', '.'));
+    if (!Number.isFinite(v) || v < 0) { alert('Preu no vàlid.'); return; }
+    state.manualPrice = v;
+    saveState();
+    render();
+  });
+  on('hoursRange', 'input', e => { state.hours = Number(e.target.value); saveState(); render(); });
+  on('copySummaryBtn', 'click', async () => {
+    try {
+      await navigator.clipboard.writeText($('summaryBox')?.textContent || '');
+      const btn = $('copySummaryBtn');
+      if (btn) { btn.textContent = 'Copiat!'; setTimeout(() => btn.textContent = 'Copia resum', 1200); }
+    } catch { alert('No he pogut copiar el resum.'); }
+  });
 }
+
 let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; $('installBtn').classList.remove('hidden'); });
-$('installBtn')?.addEventListener('click', async () => { if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt = null; $('installBtn').classList.add('hidden'); } });
-if('serviceWorker' in navigator){ window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn)); }
-wireEvents(); render();
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; toggle('installBtn', 'hidden', false); });
+on('installBtn', 'click', async () => { if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; toggle('installBtn', 'hidden', true); } });
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
+}
+
+wireEvents();
+render();
