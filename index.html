@@ -64,7 +64,8 @@
 
         <div class="segmented" role="group" aria-label="Mode de preu">
           <button id="manualModeBtn" class="active" type="button">Manual</button>
-          <button id="autoModeBtn" type="button">PVPC/ESIOS</button>
+          <button id="webModeBtn" type="button">Web ESIOS</button>
+          <button id="autoModeBtn" type="button">API</button>
           <button id="fileModeBtn" type="button">Fitxer</button>
         </div>
 
@@ -75,6 +76,15 @@
             <button id="saveManualPrice" class="primary" type="button">Aplica</button>
           </div>
           <p class="hint">Valor inicial: 0,096 €/kWh, estimat a partir de la teva factura.</p>
+        </div>
+
+        <div id="webPanel" class="panel hidden">
+          <p class="hint">Consulta el preu que ESIOS mostra en pantalla per a <strong>Península, Balears i Canàries</strong>. Aquest mode agafa el preu actual visible i l’aplica als càlculs.</p>
+          <div class="input-row">
+            <button id="fetchWebPriceBtn" class="primary" type="button">Consulta preu web ESIOS</button>
+            <a class="ghost link-button" href="https://www.esios.ree.es/es/pvpc" target="_blank" rel="noopener">Obrir ESIOS</a>
+          </div>
+          <p class="hint">Nota: si vols el cost real de les properes hores amb preus canviants, continua sent millor carregar el fitxer .xls o usar l’API.</p>
         </div>
 
         <div id="autoPanel" class="panel hidden">
@@ -98,8 +108,8 @@
             <ol>
               <li>Ves a la pàgina PVPC d’ESIOS/REE.</li>
               <li>Descarrega el fitxer Excel “PVPC Término de facturación energía activa – Desglose”.</li>
-              <li>Carrega directament aquí el fitxer .xls descarregat. També accepta CSV, TXT o JSON.</li>
-              <li>La PWA agafarà el bloc de Península, Canarias y Baleares i convertirà el FEU de €/MWh a €/kWh.</li>
+              <li>Carrega directament aquí el fitxer .xls descarregat. La lectura bona és “Tabla de Datos PCB”!E6:E29. També accepta CSV, TXT o JSON.</li>
+              <li>La PWA llegirà només la pestanya “Tabla de Datos PCB”, cel·les E6:E29, i convertirà el FEU de €/MWh a €/kWh.</li>
             </ol>
             <p><a href="https://www.esios.ree.es/es/pvpc" target="_blank" rel="noopener">Obrir PVPC a ESIOS/REE</a></p>
           </div>
@@ -119,7 +129,7 @@
           <summary>Taula horària PVPC disponible</summary>
           <div id="noPvpcBox" class="empty-pvpc">
             <p><strong>Sense dades PVPC carregades.</strong></p>
-            <p>Si no vols fer servir token ESIOS, descarrega el fitxer Excel PVPC “Desglose” d’ESIOS/REE i carrega’l directament a l’apartat “Fitxer”.</p>
+            <p>Pots usar “Web ESIOS” per llegir el preu actual de la pàgina, o descarregar el fitxer Excel PVPC “Desglose” d’ESIOS/REE i carregar-lo directament a l’apartat “Fitxer”.</p>
           </div>
           <div class="scroll-area">
             <table>
@@ -135,6 +145,7 @@
       <p>Costair€ calcula estimacions. No inclou impostos, potència contractada, lloguer de comptador ni altres conceptes fixos.</p>
     </footer>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

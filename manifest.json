@@ -1,7 +1,7 @@
 {
   "name": "Costair€ - Cost dels aires",
   "short_name": "Costair€",
-  "description": "Calculadora del cost horari dels aires condicionats amb lectura directa del fitxer .xls PVPC Desglose ESIOS.",
+  "description": "Calculadora del cost dels aires amb lectura directa de Tabla de Datos PCB!E6:E29 dels fitxers PVPC ESIOS.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#260101",

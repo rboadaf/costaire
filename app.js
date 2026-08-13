@@ -13,6 +13,7 @@ const state = {
   token: localStorage.getItem('esiosToken') || '',
   pvpc: JSON.parse(localStorage.getItem('pvpcData') || '[]'),
   pvpcFetchedAt: localStorage.getItem('pvpcFetchedAt') || '',
+  webPrice: Number(localStorage.getItem('webPrice') || NaN),
   protectedMode: localStorage.getItem('protectedMode') || 'peninsula'
 };
 
@@ -29,11 +30,13 @@ function saveState(){
   localStorage.setItem('esiosToken', state.token);
   localStorage.setItem('pvpcData', JSON.stringify(state.pvpc));
   localStorage.setItem('pvpcFetchedAt', state.pvpcFetchedAt);
+  if(Number.isFinite(state.webPrice)) localStorage.setItem('webPrice', String(state.webPrice));
   localStorage.setItem('protectedMode', state.protectedMode);
 }
 
 function activeConsumption(){ return SPLITS.filter(s => state.selected.has(s.id)).reduce((sum, s) => sum + s.kwh, 0); }
 function currentPrice(){
+  if(state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
   if(state.mode !== 'manual' && state.pvpc.length){
     const h = nowHour();
     return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
@@ -41,6 +44,7 @@ function currentPrice(){
   return state.manualPrice;
 }
 function priceForOffset(offset){
+  if(state.mode === 'web' && Number.isFinite(state.webPrice)) return state.webPrice;
   if(state.mode !== 'manual' && state.pvpc.length){
     const h = (nowHour() + offset) % 24;
     return state.pvpc.find(p => p.hour === h)?.price ?? state.manualPrice;
@@ -71,14 +75,16 @@ function renderPanels(){
   $('manualPrice').value = state.manualPrice;
   $('esiosToken').value = state.token;
   $('manualPanel').classList.toggle('hidden', state.mode !== 'manual');
+  $('webPanel').classList.toggle('hidden', state.mode !== 'web');
   $('autoPanel').classList.toggle('hidden', state.mode !== 'auto');
   $('filePanel').classList.toggle('hidden', state.mode !== 'file');
   $('manualModeBtn').classList.toggle('active', state.mode === 'manual');
+  $('webModeBtn').classList.toggle('active', state.mode === 'web');
   $('autoModeBtn').classList.toggle('active', state.mode === 'auto');
   $('fileModeBtn').classList.toggle('active', state.mode === 'file');
   const badge = $('liveBadge');
-  badge.className = `badge ${state.mode !== 'manual' && state.pvpc.length ? 'live' : state.mode !== 'manual' ? 'error' : 'manual'}`;
-  badge.textContent = state.mode === 'manual' ? 'Manual' : state.pvpc.length ? (state.mode === 'file' ? 'Fitxer' : 'PVPC') : 'Sense dades';
+  badge.className = `badge ${state.mode === 'web' && Number.isFinite(state.webPrice) ? 'live' : state.mode !== 'manual' && state.pvpc.length ? 'live' : state.mode !== 'manual' ? 'error' : 'manual'}`;
+  badge.textContent = state.mode === 'manual' ? 'Manual' : state.mode === 'web' && Number.isFinite(state.webPrice) ? 'Web' : state.pvpc.length ? (state.mode === 'file' ? 'Fitxer' : 'API') : 'Sense dades';
   const fetched = state.pvpcFetchedAt ? ` · actualitzat ${new Date(state.pvpcFetchedAt).toLocaleString('ca-ES')}` : '';
   $('priceStatus').textContent = `${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode !== 'manual' ? fetched : ''}`;
 }
@@ -96,7 +102,7 @@ function renderResults(){
   $('summaryBox').textContent = [
     `Aires actius: ${activeNames.length ? activeNames.join(' + ') : 'cap'}`,
     `Consum: ${fmtKwh(kwh)}`,
-    `Preu aquesta hora: ${currentPrice().toFixed(5).replace('.', ',')} €/kWh`,
+    `Preu aquesta hora: ${currentPrice().toFixed(5).replace('.', ',')} €/kWh${state.mode === 'web' ? ' (web ESIOS actual)' : ''}`,
     `Cost aquesta hora: ${fmtCurrency(kwh * currentPrice())}`,
     `Cost properes ${state.hours} h: ${fmtCurrency(costForHours(state.hours))}`
   ].join('\n');
@@ -125,6 +131,28 @@ function uniqueHours(rows){
   rows.sort((a,b)=>a.hour-b.hour).forEach(v => { if(!seen.has(v.hour)){ seen.add(v.hour); unique.push(v); } });
   return unique;
 }
+function parseEsiosWorkbook(buffer){
+  if(typeof XLSX === 'undefined') return [];
+  try{
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
+    const sheet = workbook.Sheets['Tabla de Datos PCB'];
+    if(!sheet) return [];
+    const rows = [];
+    for(let row = 6; row <= 29; row++){
+      const cell = sheet[`E${row}`];
+      const raw = cell ? cell.v : null;
+      const value = Number(String(raw).replace(',', '.'));
+      if(Number.isFinite(value)){
+        rows.push({ hour: row - 6, price: value / 1000 });
+      }
+    }
+    return rows.length ? uniqueHours(rows) : [];
+  }catch(err){
+    console.warn('No he pogut llegir el workbook ESIOS amb SheetJS', err);
+    return [];
+  }
+}
+
 function decodeFileBuffer(buffer){
   const decoders = ['utf-8', 'windows-1252', 'iso-8859-1'];
   for(const enc of decoders){
@@ -185,10 +213,26 @@ async function handleFile(event){
   const file = event.target.files?.[0];
   if(!file) return;
   const buffer = await file.arrayBuffer();
-  const text = decodeFileBuffer(buffer);
-  const parsed = parsePvpcText(text);
-  if(parsed.length < 1){ alert('No he pogut detectar preus horaris. Assegura’t que és el fitxer ESIOS “PVPC Término de facturación energía activa – Desglose”.'); return; }
+  const name = (file.name || '').toLowerCase();
+  let parsed = [];
+  if(name.endsWith('.xls') || name.endsWith('.xlsx')){
+    parsed = parseEsiosWorkbook(buffer);
+    if(!parsed.length && typeof XLSX === 'undefined'){
+      alert('Falta carregar la llibreria XLSX. Recarrega la pàgina amb connexió a internet i torna-ho a provar.');
+      return;
+    }
+  }
+  if(!parsed.length){
+    const text = decodeFileBuffer(buffer);
+    parsed = parsePvpcText(text);
+  }
+  if(parsed.length < 1){
+    alert('No he pogut detectar preus horaris. Assegura’t que és el fitxer ESIOS “PVPC Término de facturación energía activa – Desglose”.');
+    return;
+  }
   state.pvpc = parsed;
+  state.webPrice = NaN;
+  localStorage.removeItem('webPrice');
   state.pvpcFetchedAt = new Date().toISOString();
   state.mode = 'file';
   saveState();
@@ -217,12 +261,14 @@ async function fetchPVPC(){
 
 function wireEvents(){
   $('manualModeBtn').addEventListener('click', () => { state.mode = 'manual'; saveState(); render(); });
+  $('webModeBtn').addEventListener('click', () => { state.mode = 'web'; saveState(); render(); });
+  $('fetchWebPriceBtn').addEventListener('click', fetchEsiosScreenPrice);
   $('autoModeBtn').addEventListener('click', () => { state.mode = 'auto'; saveState(); render(); });
   $('fileModeBtn').addEventListener('click', () => { state.mode = 'file'; saveState(); render(); });
   $('saveManualPrice').addEventListener('click', () => { const v = Number(String($('manualPrice').value).replace(',', '.')); if(!Number.isFinite(v) || v < 0){ alert('Preu no vàlid.'); return; } state.manualPrice = v; saveState(); render(); });
   $('fetchPvpcBtn').addEventListener('click', fetchPVPC);
   $('pvpcFile').addEventListener('change', handleFile);
-  $('clearPvpcBtn').addEventListener('click', () => { state.pvpc = []; state.pvpcFetchedAt = ''; saveState(); render(); });
+  $('clearPvpcBtn').addEventListener('click', () => { state.pvpc = []; state.webPrice = NaN; localStorage.removeItem('webPrice'); state.pvpcFetchedAt = ''; saveState(); render(); });
   $('hoursRange').addEventListener('input', (e) => { state.hours = Number(e.target.value); saveState(); renderResults(); renderHourlyTable(); });
   $('copySummaryBtn').addEventListener('click', async () => { try{ await navigator.clipboard.writeText($('summaryBox').textContent); $('copySummaryBtn').textContent = 'Copiat!'; setTimeout(()=> $('copySummaryBtn').textContent = 'Copia resum', 1200); }catch{ alert('No he pogut copiar el resum.'); } });
 }

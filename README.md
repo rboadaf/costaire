@@ -1,15 +1,25 @@
 # Costair€ - PWA de cost dels aires
 
-Versió v5.
+Versió v7.
 
-## Canvi principal
+## Lectura correcta del fitxer ESIOS
 
-S'ha suprimit el bloc **Cost nit 8 h** de la pantalla principal i del resum.
+Per als `.xls` d'ESIOS **PVPC Término de facturación energía activa – Desglose**, Costair€ ja no intenta interpretar tot l'arxiu.
 
-La pantalla superior queda centrada en:
+Ara fa exactament això:
 
-- Cost aquesta hora
-- Consum actiu
-- Cost properes X h
+- obre la pestanya **Tabla de Datos PCB**;
+- llegeix només les cel·les **E6:E29**;
+- interpreta cada fila com una hora del dia:
+  - E6 = 00:00
+  - E7 = 01:00
+  - ...
+  - E21 = 15:00
+  - E29 = 23:00
+- converteix els valors de **€/MWh** a **€/kWh** dividint per 1000.
 
-La cache del service worker és `costaire-v5`.
+Exemple: E21 = 68,0622325465 €/MWh → 0,06806 €/kWh a les 15:00.
+
+Aquesta versió carrega SheetJS des de CDN per poder llegir `.xls` directament al navegador.
+
+La cache del service worker és `costaire-v7`.
