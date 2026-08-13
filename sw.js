@@ -1,4 +1,4 @@
-const CACHE = 'costaire-v8-emergency';
+const CACHE = 'costaire-v9-redata';
 self.addEventListener('install', event => { self.skipWaiting(); });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));

@@ -88,13 +88,12 @@
         </div>
 
         <div id="autoPanel" class="panel hidden">
-          <label for="esiosToken">Token personal ESIOS</label>
+          <p class="hint">Consulta l’API pública REData de Red Eléctrica per al widget <strong>precios-mercados-tiempo-real</strong>, amb <code>geo_ids=8741</code>.</p>
           <div class="input-row">
-            <input id="esiosToken" type="password" placeholder="Enganxa aquí el token" autocomplete="off">
-            <button id="fetchPvpcBtn" class="primary" type="button">Actualitza</button>
+            <button id="fetchPvpcBtn" class="primary" type="button">Actualitza preus REData</button>
+            <a class="ghost link-button" href="https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real?start_date=2026-08-13T00:00&end_date=2026-08-13T23:59&time_trunc=hour&geo_ids=8741" target="_blank" rel="noopener">Veure endpoint</a>
           </div>
-          <p class="hint">El token es guarda només al dispositiu. Si el navegador bloqueja la consulta, pots carregar un fitxer a la pestanya “Fitxer”.</p>
-          <label class="checkbox-inline"><input id="useTomorrow" type="checkbox"> Demà si ja està publicat</label>
+          <p class="hint">Els valors acostumen a venir en €/MWh; Costair€ els converteix a €/kWh dividint per 1000 quan cal.</p>
         </div>
 
         <div id="filePanel" class="panel hidden">

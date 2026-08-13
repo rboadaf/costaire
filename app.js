@@ -258,22 +258,41 @@ async function fetchEsiosScreenPrice(){
   alert('No he pogut llegir el preu visible d’ESIOS. Pots usar Manual o Fitxer.');
 }
 
-async function fetchPVPC(){
-  state.token = ($('esiosToken')?.value || '').trim();
-  if (!state.token) { alert('Cal un token personal ESIOS.'); return; }
+function formatLocalDay(date){
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function collectValuesFromRedataJson(node, out = []){
+  if (!node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    node.forEach(item => collectValuesFromRedataJson(item, out));
+    return out;
+  }
+  if (Array.isArray(node.values)) {
+    node.values.forEach(v => {
+      const dt = v.datetime || v.date || v.time;
+      const price = normalisePrice(v.value);
+      if (dt && price !== null) out.push({ hour: new Date(dt).getHours(), price });
+    });
+  }
+  Object.keys(node).forEach(k => collectValuesFromRedataJson(node[k], out));
+  return out;
+}
+async function fetchREDataPrices(){
   const d = new Date();
-  if ($('useTomorrow')?.checked) d.setDate(d.getDate() + 1);
-  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
-  const endpoint = `https://api.esios.ree.es/indicators/1001?start_date=${encodeURIComponent(`${y}-${m}-${day}T00:00:00`)}&end_date=${encodeURIComponent(`${y}-${m}-${day}T23:59:59`)}&geo_ids[]=8741`;
+  const day = formatLocalDay(d);
+  const endpoint = `https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real?start_date=${day}T00:00&end_date=${day}T23:59&time_trunc=hour&geo_ids=8741`;
   const btn = $('fetchPvpcBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Actualitzant...'; }
   try {
-    const res = await fetch(endpoint, { headers: { 'Accept':'application/json; application/vnd.esios-api-v1+json', 'Content-Type':'application/json', 'Authorization':`Token token="${state.token}"` } });
+    const res = await fetch(endpoint, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const rows = (data?.indicator?.values || []).map(v => ({ hour: new Date(v.datetime).getHours(), price: normalisePrice(v.value) })).filter(v => Number.isFinite(v.hour) && v.price !== null);
-    if (!rows.length) throw new Error('sense dades');
-    state.pvpc = uniqueHours(rows);
+    const json = await res.json();
+    const rows = uniqueHours(collectValuesFromRedataJson(json).filter(r => Number.isFinite(r.hour) && r.price !== null));
+    if (!rows.length) throw new Error('cap valor horari detectat');
+    state.pvpc = rows;
     state.webPrice = NaN;
     localStorage.removeItem('webPrice');
     state.pvpcFetchedAt = new Date().toISOString();
@@ -282,10 +301,14 @@ async function fetchPVPC(){
     render();
   } catch (err) {
     console.error(err);
-    alert('No he pogut descarregar el PVPC per API. Pots usar Manual, Web ESIOS o Fitxer.');
+    alert('No he pogut llegir l’API pública REData des del navegador. Pots usar Web ESIOS, Manual o Fitxer.');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Actualitza'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualitza preus REData'; }
   }
+}
+
+async function fetchPVPC(){
+  return fetchREDataPrices();
 }
 
 function wireEvents(){
