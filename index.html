@@ -35,10 +35,6 @@
           <span id="costNextLabel">Cost properes 8 h</span>
           <strong id="costNext">0,00 €</strong>
         </article>
-        <article class="metric card compact-metric">
-          <span>Cost nit 8 h</span>
-          <strong id="costEight">0,00 €</strong>
-        </article>
       </section>
 
       <section class="card">
@@ -92,18 +88,18 @@
         </div>
 
         <div id="filePanel" class="panel hidden">
-          <label for="pvpcFile">Carrega preus PVPC des d’un fitxer</label>
+          <label for="pvpcFile">Carrega preus PVPC des d’un fitxer ESIOS</label>
           <div class="input-row">
-            <input id="pvpcFile" type="file" accept=".csv,.txt,.json">
+            <input id="pvpcFile" type="file" accept=".xls,.csv,.txt,.json">
             <button id="clearPvpcBtn" class="ghost" type="button">Esborra dades</button>
           </div>
           <div class="instructions">
             <strong>D’on treure el fitxer?</strong>
             <ol>
               <li>Ves a la pàgina PVPC d’ESIOS/REE.</li>
-              <li>Descarrega el fitxer Excel del “Término de facturación energía activa”.</li>
-              <li>Obre’l amb LibreOffice Calc i desa’l com a CSV.</li>
-              <li>Carrega aquí el CSV. La PWA intentarà detectar les 24 hores i els preus en €/kWh.</li>
+              <li>Descarrega el fitxer Excel “PVPC Término de facturación energía activa – Desglose”.</li>
+              <li>Carrega directament aquí el fitxer .xls descarregat. També accepta CSV, TXT o JSON.</li>
+              <li>La PWA agafarà el bloc de Península, Canarias y Baleares i convertirà el FEU de €/MWh a €/kWh.</li>
             </ol>
             <p><a href="https://www.esios.ree.es/es/pvpc" target="_blank" rel="noopener">Obrir PVPC a ESIOS/REE</a></p>
           </div>
@@ -123,7 +119,7 @@
           <summary>Taula horària PVPC disponible</summary>
           <div id="noPvpcBox" class="empty-pvpc">
             <p><strong>Sense dades PVPC carregades.</strong></p>
-            <p>Si no vols fer servir token ESIOS, descarrega el fitxer Excel PVPC d’ESIOS/REE, converteix-lo a CSV amb Calc i carrega’l a l’apartat “Fitxer”.</p>
+            <p>Si no vols fer servir token ESIOS, descarrega el fitxer Excel PVPC “Desglose” d’ESIOS/REE i carrega’l directament a l’apartat “Fitxer”.</p>
           </div>
           <div class="scroll-area">
             <table>
